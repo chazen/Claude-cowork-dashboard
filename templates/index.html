@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Claude Cowork – Job Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">⬡</span>
+        <span class="logo-text">Claude Cowork</span>
+        <span class="logo-sub">Job Dashboard</span>
+      </div>
+      <div class="header-meta">
+        <span id="last-updated" class="muted">—</span>
+        <button id="refresh-btn" class="btn-icon" title="Refresh">↻</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Stats bar -->
+  <section class="stats-bar">
+    <div class="stat-card">
+      <div class="stat-value" id="stat-total">—</div>
+      <div class="stat-label">Scheduled Jobs</div>
+    </div>
+    <div class="stat-card running">
+      <div class="stat-value" id="stat-running">—</div>
+      <div class="stat-label">Running Now</div>
+    </div>
+    <div class="stat-card success">
+      <div class="stat-value" id="stat-success">—</div>
+      <div class="stat-label">Succeeded Today</div>
+    </div>
+    <div class="stat-card failed">
+      <div class="stat-value" id="stat-failed">—</div>
+      <div class="stat-label">Failed Today</div>
+    </div>
+  </section>
+
+  <main>
+    <!-- Live / Running column -->
+    <section class="board-section">
+      <h2 class="section-title">
+        <span class="dot running"></span> Running
+        <span class="section-count" id="live-count">0</span>
+      </h2>
+      <div id="live-lane" class="lane">
+        <p class="empty-state">No jobs running right now.</p>
+      </div>
+    </section>
+
+    <!-- Scheduled / Up Next -->
+    <section class="board-section">
+      <h2 class="section-title">
+        <span class="dot scheduled"></span> Up Next
+      </h2>
+      <div id="upcoming-lane" class="lane">
+        <p class="empty-state">Loading…</p>
+      </div>
+    </section>
+
+    <!-- Full job history grid -->
+    <section class="jobs-section">
+      <h2 class="section-title">
+        <span class="dot history"></span> All Jobs &amp; History
+        <input id="search" type="search" placeholder="Filter jobs…" />
+      </h2>
+      <div id="jobs-grid" class="jobs-grid">
+        <p class="empty-state">Loading…</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- Run detail modal -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <button class="modal-close" id="modal-close">✕</button>
+      <h3 id="modal-title">Run Detail</h3>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
