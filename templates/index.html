@@ -15,11 +15,21 @@
         <span class="logo-sub">Job Dashboard</span>
       </div>
       <div class="header-meta">
+        <span id="cowork-badge" class="cowork-badge hidden"></span>
         <span id="last-updated" class="muted">—</span>
-        <button id="refresh-btn" class="btn-icon" title="Refresh">↻</button>
+        <button id="sync-btn"    class="btn-text"  title="Re-scan Cowork tasks from disk">⟳ Sync</button>
+        <button id="refresh-btn" class="btn-icon"  title="Refresh dashboard">↻</button>
       </div>
     </div>
   </header>
+
+  <!-- Cowork notice banner (shown when Cowork not detected) -->
+  <div id="cowork-notice" class="notice hidden">
+    <strong>Claude Cowork not detected.</strong>
+    The Cowork task directory (<code>~/Documents/Claude/Scheduled/</code>) was not found on this machine.
+    Make sure Claude for Desktop is installed and you have created at least one scheduled task in Cowork,
+    then click <strong>⟳ Sync</strong>. Showing sample data in the meantime.
+  </div>
 
   <!-- Stats bar -->
   <section class="stats-bar">

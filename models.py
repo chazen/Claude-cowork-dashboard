@@ -14,6 +14,9 @@ class Job(db.Model):
     enabled = db.Column(db.Boolean, default=True)
     next_run_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # Cowork integration
+    source = db.Column(db.String(20), default="manual")     # "cowork" | "manual"
+    cowork_task_dir = db.Column(db.String(300), nullable=True)  # SKILL.md parent dir name
     runs = db.relationship("JobRun", backref="job", lazy=True, cascade="all, delete-orphan")
 
     def to_dict(self):
@@ -25,6 +28,8 @@ class Job(db.Model):
             "enabled": self.enabled,
             "next_run_at": self.next_run_at.isoformat() if self.next_run_at else None,
             "created_at": self.created_at.isoformat(),
+            "source": self.source,
+            "cowork_task_dir": self.cowork_task_dir,
         }
 
 
@@ -39,6 +44,7 @@ class JobRun(db.Model):
     output = db.Column(db.Text, default="")
     error = db.Column(db.Text, default="")
     duration_ms = db.Column(db.Integer, nullable=True)
+    cowork_session_id = db.Column(db.String(200), nullable=True)  # dedup key
 
     def to_dict(self):
         return {
@@ -50,4 +56,5 @@ class JobRun(db.Model):
             "output": self.output,
             "error": self.error,
             "duration_ms": self.duration_ms,
+            "cowork_session_id": self.cowork_session_id,
         }

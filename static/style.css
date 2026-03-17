@@ -77,6 +77,45 @@ header {
 }
 .btn-icon:hover { background: var(--border); }
 
+.btn-text {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.15s;
+}
+.btn-text:hover  { background: var(--border); }
+.btn-text:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Cowork connection badge */
+.cowork-badge {
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 99px;
+  border: 1px solid;
+  font-weight: 500;
+}
+.cowork-badge.connected    { background: rgba(34,197,94,0.12);  border-color: var(--success); color: var(--success); }
+.cowork-badge.disconnected { background: rgba(239,68,68,0.12);  border-color: var(--failed);  color: var(--failed); }
+.cowork-badge.hidden { display: none; }
+
+/* Notice banner */
+.notice {
+  max-width: 1400px;
+  margin: 0 auto 4px;
+  padding: 10px 24px;
+  background: rgba(245,158,11,0.1);
+  border-bottom: 1px solid rgba(245,158,11,0.3);
+  font-size: 13px;
+  color: var(--warning);
+}
+.notice code { font-family: monospace; font-size: 12px; }
+.notice.hidden { display: none; }
+
 /* ── Stats bar ─────────────────────────────────────────── */
 .stats-bar {
   display: flex;
@@ -296,8 +335,10 @@ main {
   font-size: 11px;
   font-weight: 500;
 }
-.tag.enabled  { background: rgba(34,197,94,0.15);  color: var(--success); }
+.tag.enabled  { background: rgba(34,197,94,0.15);   color: var(--success); }
 .tag.disabled { background: rgba(100,116,139,0.15); color: var(--muted); }
+.tag.cowork   { background: rgba(124,106,247,0.15); color: var(--accent); }
+.tag.sample   { background: rgba(100,116,139,0.12); color: var(--muted); border: 1px dashed var(--border); }
 
 /* ── Modal ─────────────────────────────────────────────── */
 .modal-overlay {
