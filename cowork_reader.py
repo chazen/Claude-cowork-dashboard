@@ -5,9 +5,11 @@ Reads Claude Cowork scheduled task definitions and session history
 from Claude for Desktop's local storage on macOS.
 
 Paths (all relative to the running user's home directory):
-  Task defs : ~/Documents/Claude/Scheduled/<task-name>/SKILL.md
-  Sessions  : ~/Library/Application Support/Claude/claude-code-sessions/**/*.json
+  Task defs  : ~/Documents/Claude/Scheduled/<task-name>/SKILL.md
+  Sessions   : ~/Library/Application Support/Claude/claude-code-sessions/**/*.json
   Transcripts: ~/.claude/projects/<project-dir>/<cliSessionId>.jsonl
+               project-dir is the session cwd with / replaced by -
+               e.g. cwd=/sessions/my-task → dir=-sessions-my-task
 """
 
 import json
@@ -31,12 +33,10 @@ def parse_skill_md(skill_path: Path) -> dict:
     except OSError:
         text = ""
 
-    # Default to directory name
-    name        = skill_path.parent.name
+    name        = skill_path.parent.name  # fallback = directory name
     description = ""
     schedule    = None
 
-    # Parse YAML frontmatter between --- markers
     fm_match = re.match(r"^---\s*\n(.*?)\n---\s*\n?", text, re.DOTALL)
     if fm_match:
         for line in fm_match.group(1).splitlines():
@@ -47,7 +47,6 @@ def parse_skill_md(skill_path: Path) -> dict:
             elif m := re.match(r'schedule\s*:\s*["\']?(.*?)["\']?\s*$', line, re.IGNORECASE):
                 schedule = m.group(1).strip()
 
-    # Fall back to first non-empty body line as description
     if not description:
         body = re.sub(r"^---\s*\n.*?\n---\s*\n?", "", text, flags=re.DOTALL)
         for line in body.splitlines():
@@ -84,16 +83,11 @@ def load_all_sessions() -> list[dict]:
 
 
 def _norm(s: str) -> str:
-    """Lowercase, collapse whitespace and common separators for fuzzy matching."""
     return re.sub(r"[\s\-_/]+", " ", str(s).lower()).strip()
 
 
 def find_sessions_for_task(task_dir_name: str, all_sessions: list[dict]) -> list[dict]:
-    """
-    Return sessions that belong to a given task, matched by:
-      1. The last segment of cwd (VM working directory)
-      2. The session title (first user message)
-    """
+    """Match sessions to a task by cwd tail or session title."""
     needle = _norm(task_dir_name)
     matched = []
     seen = set()
@@ -106,36 +100,77 @@ def find_sessions_for_task(task_dir_name: str, all_sessions: list[dict]) -> list
         if needle in cwd_tail or cwd_tail in needle or needle in title:
             matched.append(s)
             seen.add(sid)
-
-    # Newest first
     matched.sort(key=lambda x: x.get("lastActivityAt") or x.get("createdAt") or 0, reverse=True)
     return matched
 
 
+# ── JSONL discovery ────────────────────────────────────────────────────────
+
+def _cwd_to_project_dir(cwd: str) -> str:
+    """
+    Convert a session's cwd to the Claude project directory name.
+    Claude Code encodes the cwd by replacing every '/' with '-'.
+    e.g. /sessions/my-task  →  -sessions-my-task
+    """
+    return cwd.replace("/", "-")
+
+
+def _find_jsonl(cli_session_id: str, cwd: str) -> Path | None:
+    """
+    Try to locate the JSONL transcript file.
+
+    Strategy 1: search ~/.claude/projects/**/<cli_session_id>.jsonl
+    Strategy 2: list all .jsonl files in the cwd-derived project dir
+                and return the one whose stem matches cli_session_id,
+                or the newest file if cli_session_id is missing.
+    """
+    if not PROJECTS_DIR.exists():
+        return None
+
+    # Strategy 1: direct lookup by cliSessionId
+    if cli_session_id:
+        for candidate in PROJECTS_DIR.rglob(f"{cli_session_id}.jsonl"):
+            return candidate
+
+    # Strategy 2: derive project dir from cwd and take the newest JSONL
+    if cwd:
+        project_dir = PROJECTS_DIR / _cwd_to_project_dir(cwd)
+        if project_dir.exists():
+            jsonl_files = sorted(
+                project_dir.glob("*.jsonl"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            if jsonl_files:
+                # If we have a cli_session_id but didn't find it above,
+                # try case-insensitive match inside this dir
+                if cli_session_id:
+                    for f in jsonl_files:
+                        if f.stem.lower() == cli_session_id.lower():
+                            return f
+                # Otherwise return the most recently modified JSONL
+                return jsonl_files[0]
+
+    return None
+
+
 # ── Transcript analyser ────────────────────────────────────────────────────
 
-_FAIL_KW    = frozenset(["error:", "failed", "traceback", "exception", "could not", "unable to", "timed out"])
-_SUCCESS_KW = frozenset(["complete", "done", "finish", "success", "saved", "written", "created", "updated", "added"])
+_FAIL_KW    = frozenset(["error:", "failed", "traceback", "exception",
+                          "could not", "unable to", "timed out"])
+_SUCCESS_KW = frozenset(["complete", "done", "finish", "success",
+                          "saved", "written", "created", "updated", "added"])
 
 
-def analyze_jsonl(cli_session_id: str) -> dict:
+def analyze_jsonl(cli_session_id: str, cwd: str = "") -> dict:
     """
-    Parse a JSONL transcript and return:
-      status  : "success" | "warning" | "failed" | "unknown"
-      output  : last assistant text (snippet)
-      error   : error text if applicable
-      started_at / completed_at : datetime | None
-      duration_ms : int | None
+    Parse a JSONL transcript and return status/output/timing.
+    Falls back to None values when the file cannot be found.
     """
-    empty = {"status": "unknown", "output": "", "error": "",
+    empty = {"status": None, "output": "", "error": "",
              "started_at": None, "completed_at": None, "duration_ms": None}
-    if not cli_session_id:
-        return empty
 
-    jsonl_path = None
-    for candidate in PROJECTS_DIR.rglob(f"{cli_session_id}.jsonl"):
-        jsonl_path = candidate
-        break
+    jsonl_path = _find_jsonl(cli_session_id, cwd)
     if not jsonl_path:
         return empty
 
@@ -162,7 +197,6 @@ def analyze_jsonl(cli_session_id: str) -> dict:
     if not messages:
         return empty
 
-    # Walk messages to count errors and capture last assistant text
     tool_error_count = 0
     last_assistant   = ""
 
@@ -189,7 +223,7 @@ def analyze_jsonl(cli_session_id: str) -> dict:
                 ]
                 last_assistant = " ".join(parts)
 
-    lower = last_assistant.lower()
+    lower       = last_assistant.lower()
     has_fail    = any(kw in lower for kw in _FAIL_KW)
     has_success = any(kw in lower for kw in _SUCCESS_KW)
 
@@ -208,8 +242,7 @@ def analyze_jsonl(cli_session_id: str) -> dict:
     completed_at = max(timestamps) if timestamps else None
     duration_ms  = (
         int((completed_at - started_at).total_seconds() * 1000)
-        if started_at and completed_at
-        else None
+        if started_at and completed_at else None
     )
 
     return {
@@ -222,21 +255,29 @@ def analyze_jsonl(cli_session_id: str) -> dict:
     }
 
 
+def _status_from_metadata(created_ms, last_ms) -> str:
+    """
+    Heuristic when no JSONL is available: infer status from session timing.
+    A very short session (<8 s) probably errored; anything longer is treated
+    as success since we have no evidence of failure.
+    """
+    if not created_ms or not last_ms:
+        return "success"
+    duration_s = (last_ms - created_ms) / 1000
+    if duration_s < 8:
+        return "failed"
+    return "success"
+
+
 # ── Main entry point ───────────────────────────────────────────────────────
 
 def is_available() -> bool:
-    """True if Claude Cowork task directory exists on this machine."""
     return TASKS_DIR.exists()
 
 
 def read_cowork_tasks() -> list[dict]:
     """
-    Return a list of task dicts:
-      name, description, schedule, task_dir, skill_path, runs: [...]
-
-    Each run dict:
-      session_id, cli_session_id, started_at, completed_at,
-      status, output, error, duration_ms
+    Return a list of task dicts, each with a 'runs' list.
     """
     if not TASKS_DIR.exists():
         return []
@@ -250,12 +291,12 @@ def read_cowork_tasks() -> list[dict]:
         runs = []
 
         for s in sessions[:30]:
-            cli_id       = s.get("cliSessionId", "")
-            created_ms   = s.get("createdAt")
-            last_ms      = s.get("lastActivityAt")
+            cli_id     = s.get("cliSessionId", "")
+            cwd        = s.get("cwd", "")
+            created_ms = s.get("createdAt")
+            last_ms    = s.get("lastActivityAt")
 
-            # Fast-path timestamps from session metadata
-            meta_started   = (
+            meta_started = (
                 datetime.fromtimestamp(created_ms / 1000, tz=timezone.utc)
                 if created_ms else None
             )
@@ -263,21 +304,25 @@ def read_cowork_tasks() -> list[dict]:
                 datetime.fromtimestamp(last_ms / 1000, tz=timezone.utc)
                 if last_ms else None
             )
+            meta_duration = (
+                int((meta_completed - meta_started).total_seconds() * 1000)
+                if meta_started and meta_completed else None
+            )
 
-            analysis = analyze_jsonl(cli_id)
+            analysis = analyze_jsonl(cli_id, cwd)
+
+            # Prefer JSONL-derived status; fall back to metadata heuristic
+            status = analysis["status"] or _status_from_metadata(created_ms, last_ms)
 
             runs.append({
                 "session_id":     s.get("sessionId", ""),
                 "cli_session_id": cli_id,
                 "started_at":     analysis["started_at"] or meta_started,
                 "completed_at":   analysis["completed_at"] or meta_completed,
-                "status":         analysis["status"],
+                "status":         status,
                 "output":         analysis["output"],
                 "error":          analysis["error"],
-                "duration_ms":    analysis["duration_ms"] or (
-                    int((meta_completed - meta_started).total_seconds() * 1000)
-                    if meta_started and meta_completed else None
-                ),
+                "duration_ms":    analysis["duration_ms"] or meta_duration,
             })
 
         task["runs"] = runs
