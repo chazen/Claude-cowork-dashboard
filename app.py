@@ -134,52 +134,69 @@ def api_status():
 @app.route("/api/debug/cowork")
 def api_debug_cowork():
     """
-    Diagnostic endpoint — shows raw data from the Cowork filesystem
-    so you can verify session discovery is working.
+    Diagnostic endpoint — shows raw data from the Cowork filesystem.
     Visit this URL in the browser on the Mac running the server.
     """
     from cowork_reader import (
         TASKS_DIR, SESSIONS_DIR, PROJECTS_DIR,
         load_all_sessions, parse_skill_md,
     )
-    import os
+    from pathlib import Path
 
     tasks_dir_exists    = TASKS_DIR.exists()
     sessions_dir_exists = SESSIONS_DIR.exists()
     projects_dir_exists = PROJECTS_DIR.exists()
+
+    # Scan the whole Claude app-support dir for any session-like directories
+    claude_support = Path.home() / "Library" / "Application Support" / "Claude"
+    claude_support_dirs = []
+    if claude_support.exists():
+        for item in sorted(claude_support.iterdir()):
+            entry = {"name": item.name, "is_dir": item.is_dir()}
+            if item.is_dir():
+                try:
+                    children = [c.name for c in sorted(item.iterdir())[:10]]
+                    entry["children_sample"] = children
+                except PermissionError:
+                    entry["children_sample"] = ["<permission denied>"]
+            claude_support_dirs.append(entry)
 
     # List skill files
     skill_files = []
     if tasks_dir_exists:
         for p in TASKS_DIR.glob("*/SKILL.md"):
             info = parse_skill_md(p)
+            try:
+                raw = p.read_text(encoding="utf-8", errors="replace")[:300]
+            except OSError:
+                raw = ""
             skill_files.append({
-                "dir":  p.parent.name,
-                "name": info["name"],
-                "path": str(p),
+                "dir":     p.parent.name,
+                "name":    info["name"],
+                "path":    str(p),
+                "preview": raw,
             })
 
-    # Sample of sessions (first 20, show key fields only)
+    # Sample of all sessions found in SESSIONS_DIR
     all_sessions = load_all_sessions()
     session_sample = [
         {
-            "sessionId":    s.get("sessionId"),
-            "cliSessionId": s.get("cliSessionId"),
-            "cwd":          s.get("cwd"),
-            "title":        (s.get("title") or "")[:80],
-            "vmProcessName": s.get("vmProcessName"),
-            "createdAt":    s.get("createdAt"),
+            "sessionId":      s.get("sessionId"),
+            "cliSessionId":   s.get("cliSessionId"),
+            "cwd":            s.get("cwd"),
+            "title":          (s.get("title") or "")[:80],
+            "vmProcessName":  s.get("vmProcessName"),
+            "createdAt":      s.get("createdAt"),
             "lastActivityAt": s.get("lastActivityAt"),
+            "_file":          s.get("_file"),
         }
-        for s in all_sessions[:20]
+        for s in all_sessions[:30]
     ]
 
-    # List project dirs (for JSONL discovery)
+    # Project dirs (JSONL storage)
     project_dirs = []
     if projects_dir_exists:
-        project_dirs = sorted(
-            str(p.name) for p in PROJECTS_DIR.iterdir() if p.is_dir()
-        )[:40]
+        project_dirs = sorted(p.name for p in PROJECTS_DIR.iterdir() if p.is_dir())[:40]
 
     return jsonify({
         "paths": {
@@ -190,10 +207,11 @@ def api_debug_cowork():
             "sessions_dir_exists": sessions_dir_exists,
             "projects_dir_exists": projects_dir_exists,
         },
-        "skill_files":    skill_files,
-        "total_sessions": len(all_sessions),
-        "session_sample": session_sample,
-        "project_dirs":   project_dirs,
+        "claude_support_dirs": claude_support_dirs,
+        "skill_files":         skill_files,
+        "total_sessions":      len(all_sessions),
+        "session_sample":      session_sample,
+        "project_dirs":        project_dirs,
     })
 
 

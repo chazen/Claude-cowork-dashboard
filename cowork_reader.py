@@ -33,7 +33,9 @@ def parse_skill_md(skill_path: Path) -> dict:
     except OSError:
         text = ""
 
-    name        = skill_path.parent.name  # fallback = directory name
+    raw_dir_name = skill_path.parent.name
+    # Prettify slug → "Arc to Obsidian Sync" as default; overridden by frontmatter
+    name        = raw_dir_name.replace("-", " ").replace("_", " ").title()
     description = ""
     schedule    = None
 
