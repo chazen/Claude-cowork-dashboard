@@ -29,9 +29,11 @@ def sync_from_cowork():
     added  = 0
     updated = 0
 
-    # Remove sample/seed jobs the first time real Cowork tasks are found
-    if tasks and Job.query.filter_by(source="manual").count():
-        Job.query.filter_by(source="manual").delete()
+    # Remove sample/seed jobs the first time real Cowork tasks are found.
+    # Must delete per-object so SQLAlchemy cascades the run rows.
+    if tasks:
+        for stale in Job.query.filter_by(source="manual").all():
+            db.session.delete(stale)
         db.session.flush()
 
     for task in tasks:
@@ -126,6 +128,72 @@ def api_status():
         "tasks_dir": str(TASKS_DIR),
         "job_count": Job.query.count(),
         "cowork_job_count": Job.query.filter_by(source="cowork").count(),
+    })
+
+
+@app.route("/api/debug/cowork")
+def api_debug_cowork():
+    """
+    Diagnostic endpoint — shows raw data from the Cowork filesystem
+    so you can verify session discovery is working.
+    Visit this URL in the browser on the Mac running the server.
+    """
+    from cowork_reader import (
+        TASKS_DIR, SESSIONS_DIR, PROJECTS_DIR,
+        load_all_sessions, parse_skill_md,
+    )
+    import os
+
+    tasks_dir_exists    = TASKS_DIR.exists()
+    sessions_dir_exists = SESSIONS_DIR.exists()
+    projects_dir_exists = PROJECTS_DIR.exists()
+
+    # List skill files
+    skill_files = []
+    if tasks_dir_exists:
+        for p in TASKS_DIR.glob("*/SKILL.md"):
+            info = parse_skill_md(p)
+            skill_files.append({
+                "dir":  p.parent.name,
+                "name": info["name"],
+                "path": str(p),
+            })
+
+    # Sample of sessions (first 20, show key fields only)
+    all_sessions = load_all_sessions()
+    session_sample = [
+        {
+            "sessionId":    s.get("sessionId"),
+            "cliSessionId": s.get("cliSessionId"),
+            "cwd":          s.get("cwd"),
+            "title":        (s.get("title") or "")[:80],
+            "vmProcessName": s.get("vmProcessName"),
+            "createdAt":    s.get("createdAt"),
+            "lastActivityAt": s.get("lastActivityAt"),
+        }
+        for s in all_sessions[:20]
+    ]
+
+    # List project dirs (for JSONL discovery)
+    project_dirs = []
+    if projects_dir_exists:
+        project_dirs = sorted(
+            str(p.name) for p in PROJECTS_DIR.iterdir() if p.is_dir()
+        )[:40]
+
+    return jsonify({
+        "paths": {
+            "tasks_dir":    str(TASKS_DIR),
+            "sessions_dir": str(SESSIONS_DIR),
+            "projects_dir": str(PROJECTS_DIR),
+            "tasks_dir_exists":    tasks_dir_exists,
+            "sessions_dir_exists": sessions_dir_exists,
+            "projects_dir_exists": projects_dir_exists,
+        },
+        "skill_files":    skill_files,
+        "total_sessions": len(all_sessions),
+        "session_sample": session_sample,
+        "project_dirs":   project_dirs,
     })
 
 
