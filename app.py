@@ -29,6 +29,11 @@ def sync_from_cowork():
     added  = 0
     updated = 0
 
+    # Remove sample/seed jobs the first time real Cowork tasks are found
+    if tasks and Job.query.filter_by(source="manual").count():
+        Job.query.filter_by(source="manual").delete()
+        db.session.flush()
+
     for task in tasks:
         # Find or create the Job record keyed on cowork_task_dir
         job = Job.query.filter_by(cowork_task_dir=task["task_dir"]).first()
