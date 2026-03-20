@@ -5,11 +5,12 @@ Reads Claude Cowork scheduled task definitions and session history
 from Claude for Desktop's local storage on macOS.
 
 Paths (all relative to the running user's home directory):
-  Task defs  : ~/Documents/Claude/Scheduled/<task-name>/SKILL.md
-  Sessions   : ~/Library/Application Support/Claude/claude-code-sessions/**/*.json
-  Transcripts: ~/.claude/projects/<project-dir>/<cliSessionId>.jsonl
-               project-dir is the session cwd with / replaced by -
-               e.g. cwd=/sessions/my-task → dir=-sessions-my-task
+  Task defs        : ~/Documents/Claude/Scheduled/<task-name>/SKILL.md
+  Cowork sessions  : ~/Library/Application Support/Claude/local-agent-mode-sessions/**/*.json
+  Regular sessions : ~/Library/Application Support/Claude/claude-code-sessions/**/*.json
+  Transcripts      : ~/.claude/projects/<project-dir>/<cliSessionId>.jsonl
+                     project-dir is the session cwd with / replaced by -
+                     e.g. cwd=/sessions/my-task → dir=-sessions-my-task
 """
 
 import json
@@ -17,11 +18,12 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-TASKS_DIR    = Path.home() / "Documents" / "Claude" / "Scheduled"
-SESSIONS_DIR = (
-    Path.home() / "Library" / "Application Support" / "Claude" / "claude-code-sessions"
-)
-PROJECTS_DIR = Path.home() / ".claude" / "projects"
+_CLAUDE_SUPPORT = Path.home() / "Library" / "Application Support" / "Claude"
+
+TASKS_DIR             = Path.home() / "Documents" / "Claude" / "Scheduled"
+SESSIONS_DIR          = _CLAUDE_SUPPORT / "claude-code-sessions"
+LOCAL_AGENT_SESS_DIR  = _CLAUDE_SUPPORT / "local-agent-mode-sessions"
+PROJECTS_DIR          = Path.home() / ".claude" / "projects"
 
 
 # ── Task definition parser ─────────────────────────────────────────────────
@@ -43,7 +45,12 @@ def parse_skill_md(skill_path: Path) -> dict:
     if fm_match:
         for line in fm_match.group(1).splitlines():
             if m := re.match(r'name\s*:\s*["\']?(.*?)["\']?\s*$', line, re.IGNORECASE):
-                name = m.group(1).strip() or name
+                raw = m.group(1).strip()
+                # Prettify slug-style names (e.g. "arc-to-obsidian-sync" → "Arc To Obsidian Sync")
+                if raw and re.fullmatch(r'[a-z0-9][\w\-]*', raw):
+                    name = raw.replace("-", " ").replace("_", " ").title()
+                elif raw:
+                    name = raw
             elif m := re.match(r'description\s*:\s*["\']?(.*?)["\']?\s*$', line, re.IGNORECASE):
                 description = m.group(1).strip()
             elif m := re.match(r'schedule\s*:\s*["\']?(.*?)["\']?\s*$', line, re.IGNORECASE):
@@ -69,18 +76,24 @@ def parse_skill_md(skill_path: Path) -> dict:
 # ── Session loader ─────────────────────────────────────────────────────────
 
 def load_all_sessions() -> list[dict]:
-    """Load all session JSON files from Claude Desktop's session store."""
+    """
+    Load all session JSON files from Claude Desktop's session stores.
+    Scans both claude-code-sessions (regular) and local-agent-mode-sessions
+    (Cowork / agent-mode scheduled tasks).
+    """
     sessions = []
-    if not SESSIONS_DIR.exists():
-        return sessions
-    for json_file in SESSIONS_DIR.rglob("*.json"):
-        try:
-            data = json.loads(json_file.read_text(encoding="utf-8", errors="replace"))
-            if isinstance(data, dict):
-                data["_file"] = str(json_file)
-                sessions.append(data)
-        except Exception:
-            pass
+    dirs_to_scan = [SESSIONS_DIR, LOCAL_AGENT_SESS_DIR]
+    for base_dir in dirs_to_scan:
+        if not base_dir.exists():
+            continue
+        for json_file in base_dir.rglob("*.json"):
+            try:
+                data = json.loads(json_file.read_text(encoding="utf-8", errors="replace"))
+                if isinstance(data, dict):
+                    data["_file"] = str(json_file)
+                    sessions.append(data)
+            except Exception:
+                pass
     return sessions
 
 
