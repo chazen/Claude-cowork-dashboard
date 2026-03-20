@@ -138,14 +138,15 @@ def api_debug_cowork():
     Visit this URL in the browser on the Mac running the server.
     """
     from cowork_reader import (
-        TASKS_DIR, SESSIONS_DIR, PROJECTS_DIR,
+        TASKS_DIR, SESSIONS_DIR, LOCAL_AGENT_SESS_DIR, PROJECTS_DIR,
         load_all_sessions, parse_skill_md,
     )
     from pathlib import Path
 
-    tasks_dir_exists    = TASKS_DIR.exists()
-    sessions_dir_exists = SESSIONS_DIR.exists()
-    projects_dir_exists = PROJECTS_DIR.exists()
+    tasks_dir_exists         = TASKS_DIR.exists()
+    sessions_dir_exists      = SESSIONS_DIR.exists()
+    local_agent_sess_exists  = LOCAL_AGENT_SESS_DIR.exists()
+    projects_dir_exists      = PROJECTS_DIR.exists()
 
     # Scan the whole Claude app-support dir for any session-like directories
     claude_support = Path.home() / "Library" / "Application Support" / "Claude"
@@ -200,12 +201,14 @@ def api_debug_cowork():
 
     return jsonify({
         "paths": {
-            "tasks_dir":    str(TASKS_DIR),
-            "sessions_dir": str(SESSIONS_DIR),
-            "projects_dir": str(PROJECTS_DIR),
-            "tasks_dir_exists":    tasks_dir_exists,
-            "sessions_dir_exists": sessions_dir_exists,
-            "projects_dir_exists": projects_dir_exists,
+            "tasks_dir":             str(TASKS_DIR),
+            "sessions_dir":          str(SESSIONS_DIR),
+            "local_agent_sess_dir":  str(LOCAL_AGENT_SESS_DIR),
+            "projects_dir":          str(PROJECTS_DIR),
+            "tasks_dir_exists":          tasks_dir_exists,
+            "sessions_dir_exists":       sessions_dir_exists,
+            "local_agent_sess_exists":   local_agent_sess_exists,
+            "projects_dir_exists":       projects_dir_exists,
         },
         "claude_support_dirs": claude_support_dirs,
         "skill_files":         skill_files,
