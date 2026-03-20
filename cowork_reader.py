@@ -115,8 +115,20 @@ def find_sessions_for_task(task_dir_name: str, all_sessions: list[dict]) -> list
         if needle in cwd_tail or cwd_tail in needle or needle in title:
             matched.append(s)
             seen.add(sid)
-    matched.sort(key=lambda x: x.get("lastActivityAt") or x.get("createdAt") or 0, reverse=True)
+    matched.sort(key=lambda x: _ts_sort_key(x.get("lastActivityAt") or x.get("createdAt")), reverse=True)
     return matched
+
+
+def _ts_sort_key(ts) -> float:
+    """Normalise a timestamp (int ms, float ms, or ISO string) to a float for sorting."""
+    if ts is None:
+        return 0.0
+    if isinstance(ts, (int, float)):
+        return float(ts)
+    try:
+        return datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp() * 1000
+    except ValueError:
+        return 0.0
 
 
 # ── JSONL discovery ────────────────────────────────────────────────────────
@@ -308,8 +320,8 @@ def read_cowork_tasks() -> list[dict]:
         for s in sessions[:30]:
             cli_id     = s.get("cliSessionId", "")
             cwd        = s.get("cwd", "")
-            created_ms = s.get("createdAt")
-            last_ms    = s.get("lastActivityAt")
+            created_ms = _ts_sort_key(s.get("createdAt")) or None
+            last_ms    = _ts_sort_key(s.get("lastActivityAt")) or None
 
             meta_started = (
                 datetime.fromtimestamp(created_ms / 1000, tz=timezone.utc)
